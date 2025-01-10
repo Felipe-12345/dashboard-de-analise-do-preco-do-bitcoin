@@ -14,7 +14,7 @@ st.set_page_config(page_title="Dashboard Bitcoin", layout="wide")
 st.title("Análise do Preço do Bitcoin")
 
 # Função para buscar os dados da API
-@st.cache 
+@st.cache_data 
 def fetch_data(days=30):
     """Busca dados do Bitcoin nos últimos 'days' dias."""
     url = "https://api.coingecko.com/api/v3/coins/bitcoin/market_chart"
