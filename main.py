@@ -1,83 +1,88 @@
-import requests  
+import streamlit as st  
+import requests 
 from datetime import datetime  
-import matplotlib.pyplot as plt 
+import matplotlib.pyplot as plt  
 import numpy as np  
 from sklearn.linear_model import LinearRegression  
-from sklearn.preprocessing import StandardScaler  
+from sklearn.preprocessing import StandardScaler 
 
-# URL da API do CoinGecko e parâmetros para buscar os dados do Bitcoin
-url = "https://api.coingecko.com/api/v3/coins/bitcoin/market_chart"
-params = {"vs_currency": "brl", "days": "30"} 
 
-# Requisição HTTP para buscar os dados da API
-response = requests.get(url, params=params)
-if response.status_code == 200: 
-    data = response.json() 
-    prices = [item[1] for item in data["prices"]]  
-    
-    timestamps = [datetime.fromtimestamp(item[0] / 1000) for item in data["prices"]]
+st.set_page_config(page_title="Dashboard Bitcoin", layout="wide")  
+
+
+# Título principal da dashboard
+st.title("Análise do Preço do Bitcoin")
+
+# Função para buscar os dados da API
+@st.cache 
+def fetch_data(days=30):
+    """Busca dados do Bitcoin nos últimos 'days' dias."""
+    url = "https://api.coingecko.com/api/v3/coins/bitcoin/market_chart"
+    params = {"vs_currency": "brl", "days": str(days)}
+    response = requests.get(url, params=params)
+    if response.status_code == 200:
+        data = response.json()
+        prices = [item[1] for item in data["prices"]]
+        timestamps = [datetime.fromtimestamp(item[0] / 1000) for item in data["prices"]]
+        return timestamps, prices
+    else:
+        st.error("Erro ao buscar dados!")
+        return [], []
+
+# Controle deslizante para o usuário escolher o intervalo de dias
+dias = st.slider(
+    "Selecione o intervalo de dias", 
+    min_value=10, 
+    max_value=365, 
+    value=30, 
+    step=1
+)
+
+
+# Busca os dados com base no valor selecionado no slider
+timestamps, prices = fetch_data(dias)
+
+# Verifica se os dados foram carregados
+if len(prices) == 0:
+    st.warning("Nenhum dado encontrado para o intervalo selecionado.")
 else:
-    
-    print("Erro ao buscar dados:", response.status_code)
-    print(response.text)
-    exit()
+    st.success("Dados carregados com sucesso!")  
 
-# Pega os últimos 30 preços dos dados retornados da API
-precos_recentes = np.array(prices[-30:])  
+    # Calcula estatísticas dos preços
+    precos_array = np.array(prices)
+    media = np.mean(precos_array)
+    minimo = np.min(precos_array)
+    maximo = np.max(precos_array)
+    desvio = np.std(precos_array)
 
-dias_recentes = np.array(range(len(precos_recentes))).reshape(-1, 1)  
+    # Mostra estatísticas na dashboard
+    st.subheader("Estatísticas dos últimos dias")
+    st.metric("Preço Médio", f"R${media:,.2f}")
+    st.metric("Menor Preço", f"R${minimo:,.2f}")
+    st.metric("Maior Preço", f"R${maximo:,.2f}")
+    st.metric("Desvio Padrão", f"R${desvio:,.2f}")
 
-# Escalonamento dos dados: ajusta os dados para uma distribuição padrão (média 0, desvio padrão 1)
+    # Gráfico da variação dos preços
+    fig, ax = plt.subplots(figsize=(10, 5))  
+    ax.plot(timestamps, prices, color="blue", label="Preço do Bitcoin")
+    ax.set_xlabel("Data")
+    ax.set_ylabel("Preço (BRL)")
+    ax.set_title("Variação do Bitcoin nos Últimos Dias")
+    ax.legend()
+    ax.tick_params(axis="x", rotation=45)  
+    st.pyplot(fig)  
 
-scaler = StandardScaler()
-dias_recentes_scaled = scaler.fit_transform(dias_recentes)   
+    # Regressão Linear para previsão
+    dias_recentes = np.array(range(len(prices))).reshape(-1, 1)
+    scaler = StandardScaler()
+    dias_recentes_scaled = scaler.fit_transform(dias_recentes)
+    model = LinearRegression()
+    model.fit(dias_recentes_scaled, prices)
 
+    # Previsão do próximo dia
+    next_day_scaled = scaler.transform([[len(prices)]])
+    preco_previsto = model.predict(next_day_scaled)
 
-# Cria o gráfico mostrando a variação do preço do Bitcoin nos últimos 30 dias
-plt.plot(timestamps[-30:], precos_recentes, color="blue", label="Preço do Bitcoin")  
-plt.xticks(rotation=45)  
-plt.title("Variação do Bitcoin nos Últimos 30 Dias")  
-plt.xlabel("Data")  
-plt.ylabel("Preço (BRL)")  
-plt.grid(True)  
-plt.legend()  
- 
-
-# Cálculos estatísticos sobre os preços dos últimos 30 dias
-average_valores = np.mean(precos_recentes)  
-max_valores = np.max(precos_recentes)  
-min_valores = np.min(precos_recentes)  
-desvio_padrao = np.std(precos_recentes)  
-
-# Verifica se o valor do Bitcoin está aumentando ou diminuindo nos últimos dias
-if precos_recentes[-1] > precos_recentes[0]:  
-    movimento = "O valor está aumentando"
-else:
-    movimento = "O valor está diminuindo"
-
-# Exibe os resultados das estatísticas
-print("=====================")
-print(f"Média dos preços: R${average_valores:,.2f}")
-print("=====================")
-print(f"Menor preço: R${min_valores:,.2f}")
-print("=====================")
-print(f"Maior preço: R${max_valores:,.2f}")
-print("=====================")
-print(f"Desvio padrão: R${desvio_padrao:,.2f}")
-print("=====================")
-print(f"Ultimo valor foi: R${precos_recentes[-1]:,.2f}")
-print("=====================")
-print(f"{movimento}")
-print("=====================")
-
-
-# Cria e treina o modelo de Regressão Linear usando os dados escalonados
-model = LinearRegression()  
-model.fit(dias_recentes_scaled, precos_recentes)  
-# Previsão do preço do próximo dia (após os últimos 30 dias)
-next_day_scaled = scaler.transform([[len(precos_recentes)]])  
-preco_previsto = model.predict(next_day_scaled)  
-
-# Exibe a previsão do próximo preço
-print(f"Previsão do próximo preço: R${preco_previsto[0]:,.2f}")
-print("=====================")
+    st.subheader("Previsão do próximo preço")
+    st.metric("Próximo Preço Estimado", f"R${preco_previsto[0]:,.2f}")
+  
